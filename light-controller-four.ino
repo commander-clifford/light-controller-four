@@ -32,14 +32,14 @@ int tonePin = 5;
 void encoder_increment(i2cEncoderMiniLib* obj) {
   Serial.print("Increment: ");
   Serial.println(Encoder.readCounterByte());
-  increment_adjust(Encoder.readCounterByte());
+  update_levels(Encoder.readCounterByte());
 }
 
 //Callback when the CVAL is decremented
 void encoder_decrement(i2cEncoderMiniLib* obj) {
   Serial.print("Decrement: ");
   Serial.println(Encoder.readCounterByte());
-  increment_adjust(Encoder.readCounterByte());
+  update_levels(Encoder.readCounterByte());
 }
 
 //Callback when CVAL reach MAX
@@ -75,7 +75,13 @@ void encoder_long_push(i2cEncoderMiniLib* obj) {
   Serial.println("Encoder is long pushed!");
 }
 
-void adjust_light_level(int level) {
+void update_levels(int level) {
+  update_light_level(level);
+  update_display(level);
+  // tone(tonePin, clickTones[level], toneDuration);
+}
+
+void update_light_level(int level) {
 
   // set the PWM
   float pwm = level*adjustment_multiplier;
@@ -89,7 +95,7 @@ void adjust_light_level(int level) {
 
 }
 
-void adjust_display(float level) {
+void update_display(float level) {
 
   int barLength = ((level*adjustment_multiplier)/PWMS)*SCREEN_WIDTH;
   int percent = ((level*adjustment_multiplier)/PWMS)*100;
@@ -98,54 +104,19 @@ void adjust_display(float level) {
 
   display.clearDisplay();
   display.setTextColor(SSD1306_WHITE); // Draw white text
-  display.cp437(true);         // Use full 256 char 'Code Page 437' font
+  display.cp437(true); // Use full 256 char 'Code Page 437' font
 
-
-  // config vars
-  // display.setTextSize(1);      // Normal 1:1 pixel scale
-  // display.setCursor(0, 0);     // Start at top-left corner
-  // display.print(level);
-  // display.print(" * ");
-  // display.print(adjustment_multiplier);
-  // display.print(" = ");
-  // display.println(level*adjustment_multiplier);
-
-
-  // x8 / x64
   display.setTextSize(1);
   display.setCursor(0, 46);
-  // display.setTextColor(SSD1306_BLACK, SSD1306_WHITE); // Draw 'inverse' text
-  display.print("Floor Glow ");
+  display.print("Light Level");
 
   display.setCursor(0, 24);
   display.print(percent);
   display.print("% ");
   display.print(display_level);
 
-  // display.print("x");
-  // display.print(increments_int);
-
-  // dimmer %
-  // display.setTextSize(3);
-  // if(percent == 100){
-  //   display.setCursor(68-18, 32);
-  // } else if(percent < 10) {
-  //   display.setCursor(68+18, 32);
-  // } else {
-  //   display.setCursor(68, 32);
-  // }
-  // display.print(percent);
-  // display.println("%");
-
-  // for(i=0; i<display.width(); i+=4) {
-    // display.drawLine(0, 120, 60, 8, SSD1306_WHITE);
-
-    display.drawRect(0, 56, 128, 8, SSD1306_WHITE);
-    display.fillRect(0, 56, barLength, 8, SSD1306_WHITE);
-
-
-    // delay(1);
-  // }
+  display.drawRect(0, 56, 128, 8, SSD1306_WHITE);
+  display.fillRect(0, 56, barLength, 8, SSD1306_WHITE);
 
   display.display();
 
@@ -160,7 +131,7 @@ void adjust_increment_multiplier(float level) {
     level = level/8;
     Encoder.writeCounter((int32_t) level); /* Reset the counter value */
     Encoder.writeMax((int32_t) increments); /* Set the maximum threshold*/
-    adjust_display(level);
+    update_display(level);
     aim = 1;
   } else {
     // if macro, change to micro
@@ -169,26 +140,11 @@ void adjust_increment_multiplier(float level) {
     adjustment_multiplier = PWMS/increments;
     Encoder.writeCounter((int32_t) level); /* Reset the counter value */
     Encoder.writeMax((int32_t) increments); /* Set the maximum threshold*/
-    adjust_display(level);
+    update_display(level);
     aim = 0;
   }
 
-
-
-
-
-
 }
-
-void increment_adjust(int level) {
-  adjust_light_level(level);
-  adjust_display(level);
-  // tone(tonePin, clickTones[level], toneDuration);
-}
-
-// void mode_toggle(goToMenuNumber) {
-//   currentMenuItem = goToMenuNumber;
-// }
 
 void setup(void) {
 
