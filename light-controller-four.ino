@@ -22,11 +22,11 @@ float increments = 8; // init: number of steps along scale / must be float to ke
 float adjustment_multiplier = PWMS/increments; // 255/8 ~ 31
 int toneDuration = 12;
 int tonePin = 5;
-int clickTones[] = {
-  NOTE_B1,
-  NOTE_C2, NOTE_D2, NOTE_E2, NOTE_F2,
-  NOTE_G2, NOTE_A2, NOTE_B2, NOTE_C3,
-};
+// int clickTones[] = {
+  // NOTE_B1,
+  // NOTE_C2, NOTE_D2, NOTE_E2, NOTE_F2,
+  // NOTE_G2, NOTE_A2, NOTE_B2, NOTE_C3,
+// };
 
 //Callback when the CVAL is incremented
 void encoder_increment(i2cEncoderMiniLib* obj) {
