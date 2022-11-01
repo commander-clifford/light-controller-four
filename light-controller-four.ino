@@ -4,6 +4,41 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 
+#define LED1PIN 11
+#define LED2PIN 5
+#define LED3PIN 6
+#define LED4PIN 9
+
+#define BUTTON_0_PIN 7
+#define BUTTON_1_PIN 10
+#define BUTTON_2_PIN 8
+#define BUTTON_3_PIN 4
+#define BUTTON_4_PIN 2
+
+// debounce variables
+// the current reading from the input pin
+int buttonState0;
+int buttonState1;
+int buttonState2;
+int buttonState3;
+int buttonState4;
+// the previous reading from the input pin
+int lastButtonState0 = HIGH;
+int lastButtonState1 = HIGH;
+int lastButtonState2 = HIGH;
+int lastButtonState3 = HIGH;
+int lastButtonState4 = HIGH;
+
+// the following variables are unsigned longs because the time, measured in
+// milliseconds, will quickly become a bigger number than can be stored in an int.
+unsigned long lastDebounceTime = 0;  // the last time the output pin was toggled
+unsigned long debounceDelay = 25;    // the debounce time; increase if the output flickers
+
+// Define and Init I2C Rotary Encoder
+#define ROTARY_INT_PIN 3
+#define ROTARY_ADDRESS 0x20 // OLED Address 0x3C for 128x64
+i2cEncoderMiniLib Encoder(ROTARY_ADDRESS);
+
 // Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
@@ -11,30 +46,21 @@
 #define SCREEN_ADDRESS 0x3C // OLED Address 0x3C for 128x64
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
-#define LED1PIN 11
-#define LED2PIN 5
-#define LED3PIN 6
-#define LED4PIN 9
-
-// Define and Init I2C Rotary Encoder
-#define ROTARY_INT_PIN 3
-#define ROTARY_ADDRESS 0x20 // OLED Address 0x3C for 128x64
-i2cEncoderMiniLib Encoder(ROTARY_ADDRESS);
-
 // Define and Set Global Variables
-float pulses = 254.9; // LED display brightness levels 0-255 / pwm levels
-float steps = 64; // init: number of steps along pulses
-float stepLength = pulses/steps; // 255/64 ~ 3.98
+float dutyCycle = 255; // LED display brightness levels 0-255 / pwm levels
+float steps = 64; // init: number of steps along dutyCycle
+float stepLength = dutyCycle/steps; // 255/64 ~ 3.98
 float pwm = 0;
+float level = 0;
 bool multiplierMacro = false; // adjustment increment stepLength level 0=micro(x64) / 1=macro(x8)
 
 /* Tones */
 // int toneDuration = 12;
 // int tonePin = 5;
 // int clickTones[] = {
-  // NOTE_B1,
-  // NOTE_C2, NOTE_D2, NOTE_E2, NOTE_F2,
-  // NOTE_G2, NOTE_A2, NOTE_B2, NOTE_C3,
+//   NOTE_B1,
+//   NOTE_C2, NOTE_D2, NOTE_E2, NOTE_F2,
+//   NOTE_G2, NOTE_A2, NOTE_B2, NOTE_C3,
 // };
 
 
@@ -67,7 +93,7 @@ void encoder_min(i2cEncoderMiniLib* obj) {
 //Callback when the encoder is pushed
 void encoder_push(i2cEncoderMiniLib* obj) {
   Serial.println("Encoder is pushed!");
-  // adjust_increment_stepLength();
+  adjust_increment_stepLength();
 }
 
 //Callback when the encoder is released
@@ -100,6 +126,7 @@ void update_light_level(float stepNum) {
 
   // set the pwm
   pwm = stepNum*stepLength;
+
   analogWrite(LED1PIN, pwm);
   analogWrite(LED2PIN, pwm);
   analogWrite(LED3PIN, pwm);
@@ -112,25 +139,60 @@ void update_light_level(float stepNum) {
 
 void update_display(float stepNum) {
 
-  float barLength = ((stepNum*stepLength)/pulses)*SCREEN_WIDTH;
-  float percent = ((stepNum*stepLength)/pulses)*100;
+  int adjustedScreenWidth = SCREEN_WIDTH - 16;
+
+  float barLengthW = (((stepNum*stepLength)/dutyCycle)*adjustedScreenWidth);
+  float barLengthH = ((((stepNum*stepLength)/dutyCycle)*SCREEN_HEIGHT)-SCREEN_HEIGHT)*-1;
+  float percent = ((stepNum*stepLength)/dutyCycle)*100;
   int display_level = stepNum;
 
   display.clearDisplay();
-  // display.setTextColor(SSD1306_WHITE); // Draw white text
-  // display.cp437(true); // Use full 256 char 'Code Page 437' font
 
+  // horizontal meters
+
+  // indicators
+  display.fillCircle(2, 5, 2, SSD1306_WHITE);
+  display.fillCircle(2, 5+16, 2, SSD1306_WHITE);
+  display.fillCircle(2, 5+16+16, 2, SSD1306_WHITE);
+  display.fillCircle(2, 5+16+16+16, 2, SSD1306_WHITE);
+
+  // identifier numbers
   display.setTextSize(1);
-  display.setCursor(0, 46);
-  display.print("Light Level: ");
+  display.setCursor(8, 0+2);
+  display.print("1");
+  display.setCursor(8, 16+2);
+  display.print("2");
+  display.setCursor(8, 32+2);
+  display.print("3");
+  display.setCursor(8, 48+2);
+  display.print("4");
+  
+  // meters
+  display.drawRoundRect(16, 0, adjustedScreenWidth, 12, 4, SSD1306_WHITE);
+  display.fillRoundRect(16, 0, barLengthW, 12, 4, SSD1306_WHITE);
 
-  display.setCursor(0, 24);
-  display.print(percent);
-  display.print("% ");
-  display.print(display_level);
+  display.drawRoundRect(16, 16, adjustedScreenWidth, 12, 4, SSD1306_WHITE);
+  display.fillRoundRect(16, 16, barLengthW, 12, 4, SSD1306_WHITE);
 
-  display.drawRect(0, 56, 128, 8, SSD1306_WHITE);
-  display.fillRect(0, 56, barLength, 8, SSD1306_WHITE);
+  display.drawRoundRect(16, 32, adjustedScreenWidth, 12, 4, SSD1306_WHITE);
+  display.fillRoundRect(16, 32, barLengthW, 12, 4, SSD1306_WHITE);
+
+  display.drawRoundRect(16, 48, adjustedScreenWidth, 12, 4, SSD1306_WHITE);
+  display.fillRoundRect(16, 48, barLengthW, 12, 4, SSD1306_WHITE);
+
+  // vertical meters
+
+  // display.drawRect(72, 0, 8, SCREEN_HEIGHT, SSD1306_WHITE);
+  // display.fillRect(72, barLengthH, 8, SCREEN_HEIGHT, SSD1306_WHITE);
+  
+  // display.drawRect(88, 0, 8, SCREEN_HEIGHT, SSD1306_WHITE);
+  // display.fillRect(88, barLengthH, 8, SCREEN_HEIGHT, SSD1306_WHITE);
+  
+  // display.drawRect(104, 0, 8, SCREEN_HEIGHT, SSD1306_WHITE);
+  // display.fillRect(104, barLengthH, 8, SCREEN_HEIGHT, SSD1306_WHITE);
+
+  // display.drawRect(120, 0, 8, SCREEN_HEIGHT, SSD1306_WHITE);
+  // display.fillRect(120, barLengthH, 8, SCREEN_HEIGHT, SSD1306_WHITE);
 
   display.display();
 
@@ -138,25 +200,41 @@ void update_display(float stepNum) {
 
 void adjust_increment_stepLength() {
 
-  // if(true == multiplierMacro){
-  //   // if macro, change to micro
-  //   steps = 64;
-  //   stepLength = pulses/steps; // 255/64 = ~3.98
-  //   // level = level*8;
-  //   // Encoder.writeCounter((int32_t) level); /* Reset the counter value */
-  //   Encoder.writeMax((int32_t) steps); /* Set the maximum threshold*/
-  //   multiplierMacro = false;
-  // } else {
-  //   // if micro, change to macro
-  //   steps = 8;
-  //   stepLength = pulses/steps; // 255/8 = ~31.87
-  //   // // level = level/8;
-  //   // Encoder.writeCounter((int32_t) level); /* Reset the counter value */
-  //   Encoder.writeMax((int32_t) steps); /* Set the maximum threshold*/
-  //   multiplierMacro = true;
-  // }
-  // update_display(level);
+  if(true == multiplierMacro){
+    // if macro, change to micro
+    steps = 64;
+    stepLength = dutyCycle/steps; // 255/64 = ~3.98
+    level = level*8;
+    Encoder.writeCounter((int32_t) level); /* Reset the counter value */
+    Encoder.writeMax((int32_t) steps); /* Set the maximum threshold*/
+    multiplierMacro = false;
+  } else {
+    // if micro, change to macro
+    steps = 8;
+    stepLength = dutyCycle/steps; // 255/8 = ~31.87
+    level = level/8;
+    Encoder.writeCounter((int32_t) level); /* Reset the counter value */
+    Encoder.writeMax((int32_t) steps); /* Set the maximum threshold*/
+    multiplierMacro = true;
+  }
+  update_display(level);
 
+}
+
+void press_button_0() {
+  Serial.println("press_button_0");
+}
+void press_button_1() {
+  Serial.println("press_button_1");
+}
+void press_button_2() {
+  Serial.println("press_button_2");
+}
+void press_button_3() {
+  Serial.println("press_button_3");
+}
+void press_button_4() {
+  Serial.println("press_button_4");
 }
 
 void setup(void) {
@@ -164,11 +242,11 @@ void setup(void) {
   /* Define Pins */
   // pinMode(LED_BUILTIN, OUTPUT);
   pinMode(ROTARY_INT_PIN, INPUT);
-  // pinMode(button1Pin, INPUT);
-  // pinMode(button2Pin, INPUT);
-  // pinMode(button3Pin, INPUT);
-  // pinMode(button4Pin, INPUT);
-  // pinMode(button5Pin, INPUT);
+  pinMode(BUTTON_0_PIN, INPUT);
+  pinMode(BUTTON_1_PIN, INPUT);
+  pinMode(BUTTON_2_PIN, INPUT);
+  pinMode(BUTTON_3_PIN, INPUT);
+  pinMode(BUTTON_4_PIN, INPUT);
 
   pinMode(LED1PIN, OUTPUT);
   pinMode(LED2PIN, OUTPUT);
@@ -229,8 +307,71 @@ void setup(void) {
 }
 
 void loop() {
+
+  //Encoder
   if (digitalRead(ROTARY_INT_PIN) == LOW) {
-    /* Check the status of the encoder and call the callback */
     Encoder.updateStatus();
   }
+
+  // TODO: loop
+  // 1
+  int readingButton1 = digitalRead(BUTTON_1_PIN);
+  if (readingButton1 != lastButtonState1) {
+    lastDebounceTime = millis();
+  }
+  if ((millis() - lastDebounceTime) > debounceDelay) {
+    if (readingButton1 != buttonState1) {
+      buttonState1 = readingButton1;
+      if (buttonState1 == LOW) {
+        press_button_1();
+      }
+    }
+  }
+  lastButtonState1 = readingButton1;
+
+  // 2
+  int readingButton2 = digitalRead(BUTTON_2_PIN);
+  if (readingButton2 != lastButtonState2) {
+    lastDebounceTime = millis();
+  }
+  if ((millis() - lastDebounceTime) > debounceDelay) {
+    if (readingButton2 != buttonState2) {
+      buttonState2 = readingButton2;
+      if (buttonState2 == LOW) {
+        press_button_2();
+      }
+    }
+  }
+  lastButtonState2 = readingButton2;
+
+  // 3
+  int readingButton3 = digitalRead(BUTTON_3_PIN);
+  if (readingButton3 != lastButtonState3) {
+    lastDebounceTime = millis();
+  }
+  if ((millis() - lastDebounceTime) > debounceDelay) {
+    if (readingButton3 != buttonState3) {
+      buttonState3 = readingButton3;
+      if (buttonState3 == LOW) {
+        press_button_3();
+      }
+    }
+  }
+  lastButtonState3 = readingButton3;
+
+  // 4
+  int readingButton4 = digitalRead(BUTTON_4_PIN);
+  if (readingButton4 != lastButtonState4) {
+    lastDebounceTime = millis();
+  }
+  if ((millis() - lastDebounceTime) > debounceDelay) {
+    if (readingButton4 != buttonState4) {
+      buttonState4 = readingButton4;
+      if (buttonState4 == LOW) {
+        press_button_4();
+      }
+    }
+  }
+  lastButtonState4 = readingButton4;
+
 }
